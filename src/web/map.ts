@@ -68,6 +68,8 @@ class LayerControl implements IControl {
 export interface MapBundle {
   map: MapLibreMap;
   geolocate: GeolocateControl;
+  /** スタイルとソースが使えるようになったら解決する */
+  ready: Promise<void>;
 }
 
 export function createMap(container: HTMLElement): MapBundle {
@@ -83,6 +85,12 @@ export function createMap(container: HTMLElement): MapBundle {
     touchPitch: false,
   });
   map.touchZoomRotate?.disableRotation();
+
+  // load は一度しか発火しないので、生成直後のここで待ち受けを張っておく
+  const ready = new Promise<void>((resolve) => map.once("load", () => resolve()));
+
+  // 失敗を黙って握りつぶさない (タイル 404、グリフ取得失敗など)
+  map.on("error", (e) => console.error("[map]", e.error?.message ?? e));
 
   const geolocate = new GeolocateControl({
     positionOptions: { enableHighAccuracy: true },
@@ -104,7 +112,7 @@ export function createMap(container: HTMLElement): MapBundle {
   map.addControl(geolocate, "bottom-right");
   map.addControl(new NavigationControl({ showCompass: false }), "bottom-right");
 
-  return { map, geolocate };
+  return { map, geolocate, ready };
 }
 
 /** WebGL2 が使えるか。使えないときは白紙にせず理由を出す */

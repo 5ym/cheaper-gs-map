@@ -583,6 +583,11 @@ button:focus-visible {
   cursor: pointer;
 }
 
+/* display を指定すると UA の [hidden] が効かなくなるので、明示的に打ち消す */
+.layers__menu[hidden] {
+  display: none;
+}
+
 .layers__menu {
   position: absolute;
   right: 0;

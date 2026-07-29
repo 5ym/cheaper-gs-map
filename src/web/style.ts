@@ -9,9 +9,13 @@ import type { StyleSpecification } from "maplibre-gl";
 const GSI_ATTR =
   '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>';
 const ESRI_ATTR = "Esri, Maxar, Earthstar Geographics";
+/** 価格の数字に使うフォント。ラスタタイルには文字が焼き込まれているので、これだけ */
+const GLYPHS = "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf";
 
 export const STATIONS_SOURCE = "stations";
-export const PIN_LAYER = "pins";
+export const DOT_LAYER = "station-dots";
+export const BEST_LAYER = "station-best";
+export const LABEL_LAYER = "station-labels";
 export const LABELS_LAYER = "labels";
 
 /** 背景に使えるラスタタイル。先頭が既定 */
@@ -72,35 +76,66 @@ export function buildStyle(): StyleSpecification {
     };
   }
 
-  return {
-    version: 8,
-    // 価格の文字はピン画像に焼き込んでいるのでグリフサーバは要らない
-    sources,
-    layers: [
-      ...BASES.map((base, i) => ({
-        id: base.id,
-        type: "raster" as const,
-        source: base.id,
-        layout: { visibility: (i === 0 ? "visible" : "none") as "visible" | "none" },
-      })),
-      {
-        id: LABELS_LAYER,
-        type: "raster" as const,
-        source: LABELS_LAYER,
-        paint: { "raster-opacity": 0.9 },
+  // 式を多用するので、型は個々に付けずスタイル検証 (bun run validate:style) で担保する
+  const layers = [
+    ...BASES.map((base, i) => ({
+      id: base.id,
+      type: "raster",
+      source: base.id,
+      layout: { visibility: i === 0 ? "visible" : "none" },
+    })),
+    { id: LABELS_LAYER, type: "raster", source: LABELS_LAYER, paint: { "raster-opacity": 0.9 } },
+    {
+      // 最安店を囲む金色のリング。点より先に描いて外側に見せる
+      id: BEST_LAYER,
+      type: "circle",
+      source: STATIONS_SOURCE,
+      filter: ["==", ["get", "best"], true],
+      paint: {
+        "circle-color": "rgba(0,0,0,0)",
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 8, 10, 11, 16, 15],
+        "circle-stroke-width": 2.5,
+        "circle-stroke-color": "#fde047",
       },
-      {
-        id: PIN_LAYER,
-        type: "symbol" as const,
-        source: STATIONS_SOURCE,
-        layout: {
-          "icon-image": ["get", "img"] as unknown as string,
-          "icon-anchor": "bottom" as const,
-          "icon-allow-overlap": false,
-          // 安い順に配置されるので、重なったときは安い方が残る
-          "symbol-sort-key": ["get", "price"] as unknown as number,
-        },
+    },
+    {
+      id: DOT_LAYER,
+      type: "circle",
+      source: STATIONS_SOURCE,
+      paint: {
+        "circle-color": ["get", "color"],
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 4, 10, 6, 16, 9],
+        "circle-stroke-width": 2,
+        // 会員価格は赤い縁で区別する
+        "circle-stroke-color": [
+          "case",
+          ["get", "member"],
+          "#e11d48",
+          "rgba(255,255,255,0.92)",
+        ],
       },
-    ],
-  };
+    },
+    {
+      id: LABEL_LAYER,
+      type: "symbol",
+      source: STATIONS_SOURCE,
+      layout: {
+        "text-field": ["get", "label"],
+        "text-font": ["Noto Sans Bold"],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 4, 11, 12, 13],
+        "text-anchor": "bottom",
+        "text-offset": [0, -0.85],
+        "text-allow-overlap": false,
+        // 重なったときは安い方を残す
+        "symbol-sort-key": ["get", "price"],
+      },
+      paint: {
+        "text-color": "#ffffff",
+        "text-halo-color": ["get", "color"],
+        "text-halo-width": 2,
+      },
+    },
+  ] as unknown as StyleSpecification["layers"];
+
+  return { version: 8, glyphs: GLYPHS, sources, layers };
 }

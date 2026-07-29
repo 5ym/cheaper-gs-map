@@ -1,7 +1,6 @@
 import { LngLatBounds, Popup, type GeoJSONSource } from "maplibre-gl";
 import { createMap, webglSupported } from "./map.ts";
-import { PIN_LAYER, STATIONS_SOURCE } from "./style.ts";
-import { ensurePin, pinKey, resetPins } from "./pins.ts";
+import { DOT_LAYER, LABEL_LAYER, STATIONS_SOURCE } from "./style.ts";
 import {
   PRICE_COLORS,
   PRICE_LABELS,
@@ -44,7 +43,7 @@ let prices: number[] = [];
 let popup: Popup | null = null;
 const byId = new Map<string, Station>();
 
-const { map, geolocate } = createMap($("map"));
+const { map, geolocate, ready } = createMap($("map"));
 
 /** 現在地からの距離表記。現在地が無ければ空文字 */
 function distanceLabel(station: Station): string {
@@ -128,7 +127,7 @@ function popupHtml(station: Station): string {
 
 function openPopup(station: Station): void {
   popup?.remove();
-  // ピンは点の上に 30px 立っているので、その分ずらして重ならないようにする
+  // 価格ラベルが点の上に出るので、その分ずらして重ならないようにする
   popup = new Popup({ closeButton: true, maxWidth: "320px", offset: 34 })
     .setLngLat([station.lon, station.lat])
     .setHTML(popupHtml(station))
@@ -138,29 +137,20 @@ function openPopup(station: Station): void {
 /** 絞り込み結果を GeoJSON にしてソースへ流し込む。描画は MapLibre 側 (GPU) */
 function renderPins(): void {
   const source = map.getSource(STATIONS_SOURCE) as GeoJSONSource | undefined;
-  if (!source) {
-    // スタイルがまだ読み込めていないときは読み込み後にやり直す
-    map.once("load", () => renderPins());
-    return;
-  }
+  if (!source) return;
 
-  // 色の割り当ては絞り込み後の最安・最高で決まるので、変わったら画像を作り直す
-  resetPins(map, `${prices[0] ?? 0}-${prices[prices.length - 1] ?? 0}`);
-
-  const features = entries.map((entry, index) => {
-    const spec = {
+  const features = entries.map((entry, index) => ({
+    type: "Feature" as const,
+    geometry: { type: "Point" as const, coordinates: [entry.station.lon, entry.station.lat] },
+    properties: {
+      id: entry.station.id,
       price: entry.price,
-      step: priceStep(entry.price, prices),
+      label: String(entry.price),
+      color: PRICE_COLORS[priceStep(entry.price, prices)] ?? PRICE_COLORS[0],
       member: entry.type === "member",
       best: index === 0,
-    };
-    ensurePin(map, spec);
-    return {
-      type: "Feature" as const,
-      geometry: { type: "Point" as const, coordinates: [entry.station.lon, entry.station.lat] },
-      properties: { id: entry.station.id, price: entry.price, img: pinKey(spec) },
-    };
-  });
+    },
+  }));
 
   source.setData({ type: "FeatureCollection", features });
 }
@@ -360,13 +350,15 @@ function wireEvents(): void {
   $("panel-close").addEventListener("click", () => setPanel(true));
   $("panel-toggle").addEventListener("click", () => setPanel(false));
 
-  map.on("click", PIN_LAYER, (e) => {
-    const id = e.features?.[0]?.properties?.["id"];
-    const station = typeof id === "string" ? byId.get(id) : undefined;
-    if (station) openPopup(station);
-  });
-  map.on("mouseenter", PIN_LAYER, () => (map.getCanvas().style.cursor = "pointer"));
-  map.on("mouseleave", PIN_LAYER, () => (map.getCanvas().style.cursor = ""));
+  for (const layer of [DOT_LAYER, LABEL_LAYER]) {
+    map.on("click", layer, (e) => {
+      const id = e.features?.[0]?.properties?.["id"];
+      const station = typeof id === "string" ? byId.get(id) : undefined;
+      if (station) openPopup(station);
+    });
+    map.on("mouseenter", layer, () => (map.getCanvas().style.cursor = "pointer"));
+    map.on("mouseleave", layer, () => (map.getCanvas().style.cursor = ""));
+  }
 
   // 地図の移動中はパネルのぼかしを止める。合成のコストが大きいため
   map.on("movestart", () => document.body.classList.add("map-moving"));
@@ -415,8 +407,9 @@ async function boot(): Promise<void> {
   setSegmented($("price-type"), state.priceType);
   wireEvents();
 
-  // ソースとレイヤが用意できてからでないとピンを流し込めない
-  if (!map.isStyleLoaded()) await new Promise<void>((r) => map.once("load", () => r()));
+  // ソースとレイヤが用意できてからでないとピンを流し込めない。
+  // ready は地図生成と同時に張った load 待ちなので、取りこぼしで固まることがない
+  await ready;
   render();
   if (state.pref) fitToSelection();
 }
