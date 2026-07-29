@@ -86,8 +86,12 @@ export function createMap(container: HTMLElement): MapBundle {
   });
   map.touchZoomRotate?.disableRotation();
 
-  // load は一度しか発火しないので、生成直後のここで待ち受けを張っておく
-  const ready = new Promise<void>((resolve) => map.once("load", () => resolve()));
+  // load は一度しか発火しないので、生成直後のここで待ち受けを張っておく。
+  // 取りこぼしても止まらないよう idle でも解決させる (先に来た方で解決)
+  const ready = new Promise<void>((resolve) => {
+    map.once("load", () => resolve());
+    map.once("idle", () => resolve());
+  });
 
   // 失敗を黙って握りつぶさない (タイル 404、グリフ取得失敗など)
   map.on("error", (e) => console.error("[map]", e.error?.message ?? e));

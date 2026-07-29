@@ -158,10 +158,16 @@ function renderPins(): void {
 function render(): void {
   entries = filtered();
   prices = entries.map((e) => e.price);
-  renderPins();
+  // パネルの描画を地図に依存させない。地図が壊れても一覧は使えるようにする
   renderList();
   renderLegend();
   $("count").textContent = `${entries.length} 件`;
+  try {
+    renderPins();
+  } catch (e) {
+    console.error("[pins]", e);
+    toast(`地図にピンを描けませんでした: ${(e as Error).message}`);
+  }
 }
 
 function renderList(): void {
@@ -386,7 +392,16 @@ function toast(message: string, autoHide = true): void {
   if (autoHide) toastTimer = setTimeout(() => (el.hidden = true), 5000);
 }
 
+/** 例外を握りつぶすと画面が黙って止まるので、必ずトーストに出す */
+function surfaceErrors(): void {
+  window.addEventListener("error", (e: ErrorEvent) => toast(`エラー: ${e.message}`, false));
+  window.addEventListener("unhandledrejection", (e: PromiseRejectionEvent) =>
+    toast(`エラー: ${(e.reason as Error)?.message ?? String(e.reason)}`, false),
+  );
+}
+
 async function boot(): Promise<void> {
+  surfaceErrors();
   if (!webglSupported()) {
     toast("この環境では WebGL2 が使えないため地図を表示できません", false);
     return;
@@ -407,11 +422,13 @@ async function boot(): Promise<void> {
   setSegmented($("price-type"), state.priceType);
   wireEvents();
 
-  // ソースとレイヤが用意できてからでないとピンを流し込めない。
-  // ready は地図生成と同時に張った load 待ちなので、取りこぼしで固まることがない
-  await ready;
   render();
+  // ソースは地図の準備ができるまで存在しないので、整い次第もう一度流し込む
+  void ready.then(() => renderPins());
   if (state.pref) fitToSelection();
 }
 
-void boot();
+void boot().catch((e: Error) => {
+  console.error("[boot]", e);
+  toast(`起動に失敗しました: ${e.message}`, false);
+});
