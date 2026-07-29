@@ -32,7 +32,11 @@ export const PRICE_TYPES: { key: PriceTypeKey; label: string }[] = [
   { key: "member", label: "会員" },
 ];
 
-/** マーカーアイコン maker_{n}_48x48.png の n → ブランド名 */
+/**
+ * 系列アイコン maker_{n}_48x48.png の n → 系列名。
+ * 3〜99 は gogo.gs のスタンド検索が公開している系列区分と同じ。
+ * 独自ブランドのロゴは ext_maker_{n} という別系統の番号なので、99 に寄せている。
+ */
 export const BRANDS: Record<number, string> = {
   3: "ENEOS",
   4: "KYGNUS",
@@ -42,6 +46,8 @@ export const BRANDS: Record<number, string> = {
   12: "JA-SS",
   14: "carenex",
   15: "三菱商事エネルギー",
+  // 系列ではなく業態。米屋やホームセンターなど灯油だけを売る店に付く
+  98: "灯油販売店",
   99: "独自・その他",
 };
 

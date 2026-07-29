@@ -46,8 +46,12 @@ export function parseRanking(html: string): RankingRow[] {
     // 会員価格の行には赤いバッジが付く
     const priceType: PriceTypeKey = entry.find(".bg-danger").length > 0 ? "member" : "normal";
 
+    // 系列アイコン (maker_N) と独自ブランドのロゴ (ext_maker_N) は別系統の番号。
+    // ext_maker を素朴に拾うと ext_maker_3 が ENEOS になってしまうので区別する。
+    // 独自ブランドは gogo.gs の系列区分でも「独自・その他」なので 99 に寄せる
     const iconSrc = entry.find("figure img").first().attr("src") ?? "";
-    const brand = Number(/maker_(\d+)_/.exec(iconSrc)?.[1] ?? 99);
+    const icon = /(ext_)?maker_(\d+)_/.exec(iconSrc);
+    const brand = icon && !icon[1] ? Number(icon[2]) : 99;
 
     const address = collapse(link.closest("h1").parent().find("p.text-txt2").first().text());
     const updated = parseUpdated(entry.find("span.text-xs").first().text());
