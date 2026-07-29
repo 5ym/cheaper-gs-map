@@ -43,6 +43,12 @@ jobs:
       - name: サイトをビルド
         run: bun run build:web
 
+      # 地図は WebGL とワーカーで動くので、実際にブラウザで開くまで壊れに気づけない
+      - name: ブラウザで描画を確認
+        run: |
+          bunx playwright install --with-deps chromium
+          bun run smoke
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

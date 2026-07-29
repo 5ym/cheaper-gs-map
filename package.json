@@ -10,10 +10,12 @@
     "build": "bun run scrape && bun run build:web",
     "dev": "bun run scripts/build-web.ts --serve",
     "validate:style": "bun run scripts/validate-style.ts",
-    "typecheck": "tsc --noEmit && bun run validate:style"
+    "typecheck": "tsc --noEmit && bun run validate:style",
+    "smoke": "bun run scripts/smoke.ts"
   },
   "devDependencies": {
     "@types/bun": "^1.1.14",
+    "playwright": "^1.62.0",
     "typescript": "^5.7.2"
   },
   "dependencies": {

@@ -24,6 +24,19 @@ async function build(): Promise<void> {
     process.exit(1);
   }
 
+  // MapLibre はバンドルと同じ階層に置かれた maplibre-gl-worker.mjs を実行時に読む
+  // (import.meta.url からの相対解決)。バンドラは追跡できないので手で配置する。
+  // 置き忘れると GeoJSON がワーカーで処理されず、ラスタタイルだけが出てピンが出ない
+  const mlDist = join(root, "node_modules/maplibre-gl/dist");
+  for (const file of ["maplibre-gl-worker.mjs", "maplibre-gl-shared.mjs"]) {
+    const from = join(mlDist, file);
+    if (!existsSync(from)) throw new Error(`${file} が見つかりません: ${from}`);
+    await cp(from, join(outdir, "assets", file));
+  }
+
+  // 価格ラベル用のグリフ (半角数字のみ)
+  await cp(join(root, "src/web/fonts"), join(outdir, "fonts"), { recursive: true });
+
   await mkdir(join(outdir, "data"), { recursive: true });
   if (existsSync(dataFile)) {
     await cp(dataFile, join(outdir, "data", "stations.json"));

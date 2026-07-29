@@ -47,7 +47,19 @@ bun run build:web   # dist/ に静的サイトを書き出す
 bun run dev         # ビルドして http://localhost:5173/ で確認
 bun run build       # scrape + build:web
 bun run typecheck   # tsc + 地図スタイルを MapLibre の検証器にかける
+bun run smoke       # dist/ を実際のブラウザで開いて描画を確認する
 ```
+
+`smoke` は初回だけブラウザの取得が要る。
+
+```bash
+bunx playwright install chromium
+```
+
+地図は WebGL とワーカーで動くので、型検査やスタイル検証では
+「ラスタタイルは出るのにピンだけ出ない」類の壊れ方を検出できない。
+実際に `maplibre-gl-worker.mjs` の配置漏れでそうなったことがあるため、
+描画されたスタンドの数まで確認するスモークテストを CI に入れてある。
 
 ### 環境変数
 

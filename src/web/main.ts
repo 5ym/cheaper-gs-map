@@ -44,6 +44,8 @@ let popup: Popup | null = null;
 const byId = new Map<string, Station>();
 
 const { map, geolocate, ready } = createMap($("map"));
+// スモークテストから実際の描画結果 (queryRenderedFeatures) を確認するために公開する
+(window as unknown as { __map: typeof map }).__map = map;
 
 /** 現在地からの距離表記。現在地が無ければ空文字 */
 function distanceLabel(station: Station): string {

@@ -9,8 +9,12 @@ import type { StyleSpecification } from "maplibre-gl";
 const GSI_ATTR =
   '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>';
 const ESRI_ATTR = "Esri, Maxar, Earthstar Geographics";
-/** 価格の数字に使うフォント。ラスタタイルには文字が焼き込まれているので、これだけ */
-const GLYPHS = "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf";
+/**
+ * 価格の数字に使うフォント。表示するのは半角数字だけなので、
+ * 0-255 の範囲を同梱して自前で配る (外部のフォントサーバに依存しない)。
+ * ラスタタイルには地名が焼き込まれているので、必要なグリフはこれだけ。
+ */
+const GLYPHS = "./fonts/{fontstack}/{range}.pbf";
 
 export const STATIONS_SOURCE = "stations";
 export const DOT_LAYER = "station-dots";
