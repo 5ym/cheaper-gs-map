@@ -1,64 +1,117 @@
-import L from "leaflet";
+import {
+  AttributionControl,
+  GeolocateControl,
+  Map as MapLibreMap,
+  NavigationControl,
+  ScaleControl,
+  type ControlPosition,
+  type IControl,
+} from "maplibre-gl";
+import { BASES, LABELS_LAYER, buildStyle } from "./style.ts";
+import { escapeHtml } from "./format.ts";
 
-const GSI_ATTR =
-  '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>';
-const ESRI_ATTR = "Esri, Maxar, Earthstar Geographics";
+/** 背景の切替（MapLibre には標準のレイヤ切替が無いので自前） */
+class LayerControl implements IControl {
+  private root!: HTMLElement;
 
-/** ドラッグ中のタイル読み込みを抑えて描画を軽くする */
-const TILE_PERF = {
-  updateWhenIdle: true,
-  updateWhenZooming: false,
-  keepBuffer: 1,
-} satisfies L.TileLayerOptions;
+  onAdd(map: MapLibreMap): HTMLElement {
+    this.root = document.createElement("div");
+    this.root.className = "maplibregl-ctrl maplibregl-ctrl-group layers";
+    this.root.innerHTML = `
+      <button type="button" class="layers__toggle" aria-expanded="false" aria-label="背景を切り替え">
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
+          <path d="M12 3 2 8l10 5 10-5-10-5Z" fill="currentColor" opacity=".9"/>
+          <path d="M2 12.5 12 17.5l10-5M2 16.5 12 21.5l10-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <div class="layers__menu" hidden>
+        ${BASES.map(
+          (base, i) => `
+          <label class="layers__item">
+            <input type="radio" name="base" value="${base.id}"${i === 0 ? " checked" : ""}>
+            <span>${escapeHtml(base.label)}</span>
+          </label>`,
+        ).join("")}
+        <hr class="layers__sep">
+        <label class="layers__item">
+          <input type="checkbox" name="labels" checked>
+          <span>地名ラベル</span>
+        </label>
+      </div>`;
 
-export function createMap(container: HTMLElement): L.Map {
-  // 衛星写真をデフォルトに。国土地理院のシームレス空中写真は日本国内が高精細
-  const gsiPhoto = L.tileLayer(
-    "https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg",
-    { maxZoom: 19, maxNativeZoom: 18, attribution: `衛星写真: ${GSI_ATTR}`, ...TILE_PERF },
-  );
-  const esriPhoto = L.tileLayer(
-    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    { maxZoom: 19, maxNativeZoom: 19, attribution: `衛星写真: ${ESRI_ATTR}`, ...TILE_PERF },
-  );
-  const gsiPale = L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    maxNativeZoom: 18,
-    attribution: `地図: ${GSI_ATTR}`,
-    ...TILE_PERF,
+    const menu = this.root.querySelector<HTMLElement>(".layers__menu")!;
+    const toggle = this.root.querySelector<HTMLButtonElement>(".layers__toggle")!;
+    toggle.addEventListener("click", () => {
+      menu.hidden = !menu.hidden;
+      toggle.setAttribute("aria-expanded", String(!menu.hidden));
+    });
+
+    this.root.addEventListener("change", (event) => {
+      const input = event.target as HTMLInputElement;
+      if (input.name === "base") {
+        for (const base of BASES) {
+          map.setLayoutProperty(base.id, "visibility", base.id === input.value ? "visible" : "none");
+        }
+      } else if (input.name === "labels") {
+        map.setLayoutProperty(LABELS_LAYER, "visibility", input.checked ? "visible" : "none");
+      }
+    });
+
+    return this.root;
+  }
+
+  onRemove(): void {
+    this.root.remove();
+  }
+}
+
+export interface MapBundle {
+  map: MapLibreMap;
+  geolocate: GeolocateControl;
+}
+
+export function createMap(container: HTMLElement): MapBundle {
+  const map = new MapLibreMap({
+    container,
+    style: buildStyle(),
+    center: [138.2, 36.5],
+    zoom: 4.2,
+    attributionControl: false,
+    // 傾き・回転はスタンドを探すのに要らないので切る
+    pitchWithRotate: false,
+    dragRotate: false,
+    touchPitch: false,
+  });
+  map.touchZoomRotate?.disableRotation();
+
+  const geolocate = new GeolocateControl({
+    positionOptions: { enableHighAccuracy: true },
+    trackUserLocation: true,
+    showAccuracyCircle: true,
   });
 
-  // 衛星写真だけだと地名が分からないのでラベルを重ねられるようにする
-  const labels = L.tileLayer(
-    "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
-    { maxZoom: 19, maxNativeZoom: 19, attribution: ESRI_ATTR, opacity: 0.9, ...TILE_PERF },
+  map.addControl(new ScaleControl({ unit: "metric" }), "bottom-left");
+  // bottom-right は後から足したものが上に積まれるので、出典 → 背景切替 → 現在地 → ズームの順で足す
+  map.addControl(
+    new AttributionControl({
+      compact: true,
+      customAttribution:
+        '<a href="https://maplibre.org/" target="_blank" rel="noopener">MapLibre</a>',
+    }),
+    "bottom-right",
   );
+  map.addControl(new LayerControl() as IControl, "bottom-right" as ControlPosition);
+  map.addControl(geolocate, "bottom-right");
+  map.addControl(new NavigationControl({ showCompass: false }), "bottom-right");
 
-  const map = L.map(container, {
-    center: [36.5, 138.2],
-    zoom: 5,
-    layers: [gsiPhoto, labels],
-    zoomControl: false,
-    worldCopyJump: true,
-    preferCanvas: true,
-  });
+  return { map, geolocate };
+}
 
-  L.control.zoom({ position: "bottomright" }).addTo(map);
-  L.control
-    .layers(
-      { "衛星写真 (地理院)": gsiPhoto, "衛星写真 (Esri)": esriPhoto, "淡色地図": gsiPale },
-      { "地名ラベル": labels },
-      { position: "bottomright", collapsed: true },
-    )
-    .addTo(map);
-  L.control.scale({ imperial: false, position: "bottomleft" }).addTo(map);
-
-  map.attributionControl.setPrefix(
-    '<a href="https://leafletjs.com/" target="_blank" rel="noopener">Leaflet</a>',
-  );
-  map.attributionControl.addAttribution(
-    '価格: <a href="https://gogo.gs/" target="_blank" rel="noopener">gogo.gs</a>',
-  );
-
-  return map;
+/** WebGL2 が使えるか。使えないときは白紙にせず理由を出す */
+export function webglSupported(): boolean {
+  try {
+    return Boolean(document.createElement("canvas").getContext("webgl2"));
+  } catch {
+    return false;
+  }
 }

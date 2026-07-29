@@ -31,6 +31,9 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - name: 型と地図スタイルの検査
+        run: bun run typecheck
+
       - name: 価格データを収集
         run: bun run scrape
         env:

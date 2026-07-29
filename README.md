@@ -15,9 +15,13 @@ src/scraper/   価格収集 (Bun で実行)
   ranking.ts     ランキングページのパーサ
   coords.ts      店舗座標の解決
   index.ts       収集の全体制御 → data/stations.json
-src/web/       地図フロントエンド (Leaflet)
+src/web/       地図フロントエンド (MapLibre GL)
+  style.ts       タイルとレイヤの定義 (実行時コード非依存なので単体で検証できる)
+  map.ts         地図の生成とコントロール
+  pins.ts        価格ピンの画像生成
+  main.ts        絞り込み・一覧・ポップアップ
 src/shared/    双方で使う型
-scripts/       ビルド + 開発サーバ
+scripts/       ビルド + 開発サーバ + スタイル検証
 ```
 
 ### データの取り方
@@ -43,7 +47,7 @@ bun run scrape      # 価格を収集して data/stations.json を作る
 bun run build:web   # dist/ に静的サイトを書き出す
 bun run dev         # ビルドして http://localhost:5173/ で確認
 bun run build       # scrape + build:web
-bun run typecheck
+bun run typecheck   # tsc + 地図スタイルを MapLibre の検証器にかける
 ```
 
 ### 環境変数
@@ -57,11 +61,18 @@ bun run typecheck
 
 ## 地図
 
-- 背景は **衛星写真**（既定: 国土地理院シームレス空中写真、切替で Esri World Imagery、淡色地図）
+描画は **MapLibre GL JS**（WebGL）。ラスタタイルもピンも GPU で描くので、
+DOM 要素を動かす Leaflet と違ってドラッグがメインスレッドを塞がない。
+
+- 背景は **衛星写真**（既定: Esri World Imagery、切替で国土地理院シームレス空中写真、淡色地図）
 - 地名ラベルを重ねて表示（右下のレイヤコントロールで切替）
-- マーカーは価格そのものを表示し、色は安いほど緑・高いほど赤。最安店は金色の枠
+- ピンは価格そのものを表示し、色は安いほど緑・高いほど赤。最安店は金色の枠、会員価格は赤い印
+- ピンは canvas で焼いた画像として登録するので、文字用のグリフサーバに依存しない
+- 重なったピンは MapLibre が自動で間引く。`symbol-sort-key` に価格を渡してあるので安い方が残る
+- 現在地ボタン（追従・精度円つき）。取得できると一覧とポップアップに距離が出る
 - 油種 / 現金・会員 / 都道府県 / 更新の新しさ / ブランド / 店名・住所検索で絞り込み
 - 絞り込み条件は URL のハッシュに入るので、そのまま共有できる
+- WebGL2 が使えない環境では白紙にせず理由を表示する
 
 ## GitHub Pages への公開
 

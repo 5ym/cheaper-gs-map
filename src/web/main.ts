@@ -1,15 +1,18 @@
-import L from "leaflet";
-import { createMap } from "./map.ts";
+import { LngLatBounds, Popup, type GeoJSONSource } from "maplibre-gl";
+import { createMap, webglSupported } from "./map.ts";
+import { PIN_LAYER, STATIONS_SOURCE } from "./style.ts";
+import { ensurePin, pinKey, resetPins } from "./pins.ts";
 import {
   PRICE_COLORS,
   PRICE_LABELS,
+  distanceKm,
   escapeHtml,
+  formatDistance,
   formatStamp,
   formatUpdated,
   priceStep,
   relativeDays,
 } from "./format.ts";
-import { distanceKm, formatDistance, setupLocate } from "./locate.ts";
 import type { Dataset, FuelKey, PriceInfo, PriceTypeKey, Station } from "../shared/types.ts";
 
 type PriceTypeFilter = "best" | PriceTypeKey;
@@ -32,19 +35,21 @@ interface State {
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
-const map = createMap($("map"));
-const markerLayer = L.layerGroup().addTo(map);
-
 let data: Dataset;
 let state: State;
 /** 現在地。未取得なら null */
-let here: L.LatLng | null = null;
-const markers = new Map<string, L.Marker>();
+let here: { lat: number; lon: number } | null = null;
+let entries: Entry[] = [];
+let prices: number[] = [];
+let popup: Popup | null = null;
+const byId = new Map<string, Station>();
+
+const { map, geolocate } = createMap($("map"));
 
 /** 現在地からの距離表記。現在地が無ければ空文字 */
 function distanceLabel(station: Station): string {
   if (!here) return "";
-  return formatDistance(distanceKm(here, { lat: station.lat, lng: station.lon }));
+  return formatDistance(distanceKm(here, { lat: station.lat, lon: station.lon }));
 }
 
 /** 店舗から現在の油種・価格種別に合う 1 件を取り出す */
@@ -66,7 +71,7 @@ function pickPrice(station: Station, fuel: FuelKey, type: PriceTypeFilter): Entr
 
 function filtered(): Entry[] {
   const q = state.search.trim().toLowerCase();
-  const entries: Entry[] = [];
+  const result: Entry[] = [];
   for (const station of data.stations) {
     if (state.pref && station.pref !== state.pref) continue;
     if (state.brands.size && !state.brands.has(station.brand)) continue;
@@ -74,9 +79,9 @@ function filtered(): Entry[] {
     const entry = pickPrice(station, state.fuel, state.priceType);
     if (!entry) continue;
     if (state.freshness && relativeDays(entry.info.updated) > state.freshness) continue;
-    entries.push(entry);
+    result.push(entry);
   }
-  return entries.sort((a, b) => a.price - b.price || a.info.rank - b.info.rank);
+  return result.sort((a, b) => a.price - b.price || a.info.rank - b.info.rank);
 }
 
 function popupHtml(station: Station): string {
@@ -121,100 +126,68 @@ function popupHtml(station: Station): string {
     </div>`;
 }
 
-/** 同時に描くマーカーの上限。DOM が増えるとドラッグが重くなるため画面内の安い順に絞る */
-const MAX_MARKERS = 250;
-
-let entries: Entry[] = [];
-let prices: number[] = [];
-/** マーカーの見た目を表す署名。変わらなければ作り直さない */
-const signatures = new Map<string, string>();
-
-function makeMarker(entry: Entry, step: number, isBest: boolean): L.Marker {
-  const classes = ["pin", `pin--${step}`];
-  if (isBest) classes.push("pin--best");
-  if (entry.type === "member") classes.push("pin--member");
-  const icon = L.divIcon({
-    className: "pin-wrap",
-    html: `<div class="${classes.join(" ")}" style="--pin:${PRICE_COLORS[step]}"><span>${entry.price}</span></div>`,
-    iconSize: [46, 30],
-    iconAnchor: [23, 30],
-    popupAnchor: [0, -28],
-  });
-  return L.marker([entry.station.lat, entry.station.lon], {
-    icon,
-    title: `${entry.station.name} ${entry.price}`,
-  }).bindPopup(() => popupHtml(entry.station), { maxWidth: 320, minWidth: 260 });
+function openPopup(station: Station): void {
+  popup?.remove();
+  // ピンは点の上に 30px 立っているので、その分ずらして重ならないようにする
+  popup = new Popup({ closeButton: true, maxWidth: "320px", offset: 34 })
+    .setLngLat([station.lon, station.lat])
+    .setHTML(popupHtml(station))
+    .addTo(map);
 }
 
-/** 画面内のマーカーだけを差分更新する */
-function renderMarkers(): void {
-  const bounds = map.getBounds().pad(0.2);
-  const wanted = new Map<string, { entry: Entry; step: number; best: boolean; sig: string }>();
-
-  for (const entry of entries) {
-    if (!bounds.contains([entry.station.lat, entry.station.lon])) continue;
-    const step = priceStep(entry.price, prices);
-    const best = wanted.size === 0; // entries は安い順なので画面内の先頭が最安
-    wanted.set(entry.station.id, {
-      entry,
-      step,
-      best,
-      sig: `${entry.price}|${step}|${entry.type}|${best}`,
-    });
-    if (wanted.size >= MAX_MARKERS) break;
+/** 絞り込み結果を GeoJSON にしてソースへ流し込む。描画は MapLibre 側 (GPU) */
+function renderPins(): void {
+  const source = map.getSource(STATIONS_SOURCE) as GeoJSONSource | undefined;
+  if (!source) {
+    // スタイルがまだ読み込めていないときは読み込み後にやり直す
+    map.once("load", () => renderPins());
+    return;
   }
 
-  for (const [id, marker] of markers) {
-    if (!wanted.has(id)) {
-      markerLayer.removeLayer(marker);
-      markers.delete(id);
-      signatures.delete(id);
-    }
-  }
+  // 色の割り当ては絞り込み後の最安・最高で決まるので、変わったら画像を作り直す
+  resetPins(map, `${prices[0] ?? 0}-${prices[prices.length - 1] ?? 0}`);
 
-  for (const [id, w] of wanted) {
-    if (signatures.get(id) === w.sig) continue;
-    const old = markers.get(id);
-    if (old) markerLayer.removeLayer(old);
-    const marker = makeMarker(w.entry, w.step, w.best);
-    markerLayer.addLayer(marker);
-    markers.set(id, marker);
-    signatures.set(id, w.sig);
-  }
+  const features = entries.map((entry, index) => {
+    const spec = {
+      price: entry.price,
+      step: priceStep(entry.price, prices),
+      member: entry.type === "member",
+      best: index === 0,
+    };
+    ensurePin(map, spec);
+    return {
+      type: "Feature" as const,
+      geometry: { type: "Point" as const, coordinates: [entry.station.lon, entry.station.lat] },
+      properties: { id: entry.station.id, price: entry.price, img: pinKey(spec) },
+    };
+  });
 
-  const shown = wanted.size;
-  $("count").textContent =
-    shown < entries.length ? `${entries.length} 件 (表示 ${shown})` : `${entries.length} 件`;
+  source.setData({ type: "FeatureCollection", features });
 }
 
 function render(): void {
   entries = filtered();
   prices = entries.map((e) => e.price);
-  // 条件が変わったので全マーカーを作り直す
-  markerLayer.clearLayers();
-  markers.clear();
-  signatures.clear();
-
-  renderMarkers();
-  renderList(entries, prices);
-  renderLegend(prices);
+  renderPins();
+  renderList();
+  renderLegend();
+  $("count").textContent = `${entries.length} 件`;
 }
 
-/** 現在地が動いたときはマーカーを作り直さず一覧の距離だけ更新する */
-function refreshList(): void {
-  renderList(entries, prices);
-}
-
-function renderList(entries: Entry[], sortedPrices: number[]): void {
+function renderList(): void {
   const list = $<HTMLOListElement>("list");
   const prefName = (code: number) => data.prefectures.find((p) => p.code === code)?.name ?? "";
+  if (entries.length === 0) {
+    list.innerHTML = `<li class="list__empty">条件に合うスタンドがありません</li>`;
+    return;
+  }
   list.innerHTML = entries
     .slice(0, 100)
     .map(
       (e, i) => `
       <li class="list__item" data-id="${e.station.id}">
         <span class="list__rank">${i + 1}</span>
-        <span class="list__price" style="--pin:${PRICE_COLORS[priceStep(e.price, sortedPrices)]}">${e.price}</span>
+        <span class="list__price" style="--pin:${PRICE_COLORS[priceStep(e.price, prices)]}">${e.price}</span>
         <span class="list__body">
           <span class="list__name">${escapeHtml(e.station.name)}</span>
           <span class="list__meta">${here ? `<span class="list__dist">${distanceLabel(e.station)}</span>` : ""}${escapeHtml(prefName(e.station.pref))}・${e.type === "member" ? "会員" : "現金"}・${formatUpdated(e.info.updated)}</span>
@@ -222,40 +195,33 @@ function renderList(entries: Entry[], sortedPrices: number[]): void {
       </li>`,
     )
     .join("");
-  if (entries.length === 0) {
-    list.innerHTML = `<li class="list__empty">条件に合うスタンドがありません</li>`;
-  }
 }
 
-function renderLegend(sorted: number[]): void {
+function renderLegend(): void {
   const legend = $("legend");
-  if (sorted.length === 0) {
+  if (prices.length === 0) {
     legend.innerHTML = "";
     return;
   }
-  const lo = sorted[0]!;
-  const hi = sorted[sorted.length - 1]!;
   legend.innerHTML = `
     <div class="legend__bar">${PRICE_COLORS.map(
       (c, i) => `<span style="background:${c}" title="${PRICE_LABELS[i]}"></span>`,
     ).join("")}</div>
-    <div class="legend__scale"><span>${lo}</span><span>${hi}</span></div>`;
+    <div class="legend__scale"><span>${prices[0]}</span><span>${prices[prices.length - 1]}</span></div>`;
 }
 
 function focusStation(id: string): void {
-  const station = data.stations.find((s) => s.id === id);
+  const station = byId.get(id);
   if (!station) return;
-  // 画面外のマーカーは描かれていないので、移動を即座に確定させてから描き直す
-  map.setView([station.lat, station.lon], Math.max(map.getZoom(), 16), { animate: false });
-  renderMarkers();
-  markers.get(id)?.openPopup();
+  map.flyTo({ center: [station.lon, station.lat], zoom: Math.max(map.getZoom(), 15), speed: 1.6 });
+  openPopup(station);
 }
 
 function fitToSelection(): void {
-  const entries = filtered();
   if (entries.length === 0) return;
-  const bounds = L.latLngBounds(entries.map((e) => [e.station.lat, e.station.lon] as [number, number]));
-  map.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
+  const bounds = new LngLatBounds();
+  for (const e of entries) bounds.extend([e.station.lon, e.station.lat]);
+  map.fitBounds(bounds, { padding: 60, maxZoom: 12, duration: 600 });
 }
 
 /* ---------- 状態の URL 同期 ---------- */
@@ -296,8 +262,7 @@ function update(): void {
 /* ---------- UI 構築 ---------- */
 
 function buildControls(): void {
-  const fuelBox = $("fuel");
-  fuelBox.innerHTML = data.fuels
+  $("fuel").innerHTML = data.fuels
     .map(
       (f) =>
         `<button type="button" role="radio" data-value="${f.key}" aria-checked="${f.key === state.fuel}">${escapeHtml(f.label)}</button>`,
@@ -307,14 +272,11 @@ function buildControls(): void {
   const prefSelect = $<HTMLSelectElement>("pref");
   prefSelect.innerHTML =
     `<option value="0">全国</option>` +
-    data.prefectures
-      .map((p) => `<option value="${p.code}">${escapeHtml(p.name)}</option>`)
-      .join("");
+    data.prefectures.map((p) => `<option value="${p.code}">${escapeHtml(p.name)}</option>`).join("");
   prefSelect.value = String(state.pref);
 
-  const brandBox = $("brands");
   const used = new Set(data.stations.map((s) => s.brand));
-  brandBox.innerHTML = Object.entries(data.brands)
+  $("brands").innerHTML = Object.entries(data.brands)
     .filter(([code]) => used.has(Number(code)))
     .map(
       ([code, name]) =>
@@ -394,15 +356,32 @@ function wireEvents(): void {
     if (item?.dataset.id) focusStation(item.dataset.id);
   });
 
-  // 表示範囲が変わったらマーカーを貼り直す (ドラッグ中は走らせない)
-  map.on("moveend zoomend", () => renderMarkers());
-  // ドラッグ中はパネルのぼかしを止める。合成のコストが大きく描画が詰まるため
-  map.on("movestart zoomstart", () => document.body.classList.add("map-moving"));
-  map.on("moveend zoomend", () => document.body.classList.remove("map-moving"));
-
   const setPanel = (hidden: boolean) => document.body.classList.toggle("panel-hidden", hidden);
   $("panel-close").addEventListener("click", () => setPanel(true));
   $("panel-toggle").addEventListener("click", () => setPanel(false));
+
+  map.on("click", PIN_LAYER, (e) => {
+    const id = e.features?.[0]?.properties?.["id"];
+    const station = typeof id === "string" ? byId.get(id) : undefined;
+    if (station) openPopup(station);
+  });
+  map.on("mouseenter", PIN_LAYER, () => (map.getCanvas().style.cursor = "pointer"));
+  map.on("mouseleave", PIN_LAYER, () => (map.getCanvas().style.cursor = ""));
+
+  // 地図の移動中はパネルのぼかしを止める。合成のコストが大きいため
+  map.on("movestart", () => document.body.classList.add("map-moving"));
+  map.on("moveend", () => document.body.classList.remove("map-moving"));
+
+  let lastFix: { lat: number; lon: number } | null = null;
+  geolocate.on("geolocate", (e) => {
+    const { latitude, longitude } = e.coords;
+    here = { lat: latitude, lon: longitude };
+    // 20m 以上動いたときだけ一覧を描き直す (追従は頻繁に発火する)
+    if (lastFix && distanceKm(lastFix, here) < 0.02) return;
+    lastFix = here;
+    renderList();
+  });
+  geolocate.on("error", () => toast("現在地を取得できませんでした"));
 }
 
 let toastTimer: ReturnType<typeof setTimeout>;
@@ -415,21 +394,11 @@ function toast(message: string, autoHide = true): void {
   if (autoHide) toastTimer = setTimeout(() => (el.hidden = true), 5000);
 }
 
-function watchLocation(): void {
-  let last: L.LatLng | null = null;
-  setupLocate(map, {
-    onChange: (latlng) => {
-      here = latlng;
-      // 20m 以上動いたときだけ描き直す (watch は頻繁に発火する)
-      if (latlng && last && latlng.distanceTo(last) < 20) return;
-      last = latlng;
-      refreshList();
-    },
-    onError: (message) => toast(message),
-  });
-}
-
 async function boot(): Promise<void> {
+  if (!webglSupported()) {
+    toast("この環境では WebGL2 が使えないため地図を表示できません", false);
+    return;
+  }
   try {
     const res = await fetch("./data/stations.json", { cache: "no-cache" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -438,12 +407,16 @@ async function boot(): Promise<void> {
     toast(`価格データを読み込めませんでした (${(e as Error).message})`, false);
     return;
   }
+  for (const station of data.stations) byId.set(station.id, station);
+
   state = readState();
   buildControls();
   setSegmented($("fuel"), state.fuel);
   setSegmented($("price-type"), state.priceType);
   wireEvents();
-  watchLocation();
+
+  // ソースとレイヤが用意できてからでないとピンを流し込めない
+  if (!map.isStyleLoaded()) await new Promise<void>((r) => map.once("load", () => r()));
   render();
   if (state.pref) fitToSelection();
 }

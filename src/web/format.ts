@@ -39,6 +39,25 @@ export function relativeDays(unixSec: number): number {
   return (Date.now() / 1000 - unixSec) / 86400;
 }
 
+/** 2 点間の距離 (km)。簡易なハバサイン */
+export function distanceKm(
+  a: { lat: number; lon: number },
+  b: { lat: number; lon: number },
+): number {
+  const R = 6371;
+  const rad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * rad;
+  const dLon = (b.lon - a.lon) * rad;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+export function formatDistance(km: number): string {
+  return km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(km < 10 ? 1 : 0)}km`;
+}
+
 export function escapeHtml(s: string): string {
   return s.replace(
     /[&<>"']/g,
