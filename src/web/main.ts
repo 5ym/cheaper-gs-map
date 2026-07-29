@@ -9,6 +9,7 @@ import {
   priceStep,
   relativeDays,
 } from "./format.ts";
+import { distanceKm, formatDistance, setupLocate } from "./locate.ts";
 import type { Dataset, FuelKey, PriceInfo, PriceTypeKey, Station } from "../shared/types.ts";
 
 type PriceTypeFilter = "best" | PriceTypeKey;
@@ -36,7 +37,15 @@ const markerLayer = L.layerGroup().addTo(map);
 
 let data: Dataset;
 let state: State;
+/** 現在地。未取得なら null */
+let here: L.LatLng | null = null;
 const markers = new Map<string, L.Marker>();
+
+/** 現在地からの距離表記。現在地が無ければ空文字 */
+function distanceLabel(station: Station): string {
+  if (!here) return "";
+  return formatDistance(distanceKm(here, { lat: station.lat, lng: station.lon }));
+}
 
 /** 店舗から現在の油種・価格種別に合う 1 件を取り出す */
 function pickPrice(station: Station, fuel: FuelKey, type: PriceTypeFilter): Entry | null {
@@ -97,7 +106,9 @@ function popupHtml(station: Station): string {
   return `
     <div class="pop">
       <h3 class="pop__name">${escapeHtml(station.name)}</h3>
-      <p class="pop__sub"><span class="pop__brand">${escapeHtml(brand)}</span>${escapeHtml(station.address)}</p>
+      <p class="pop__sub"><span class="pop__brand">${escapeHtml(brand)}</span>${escapeHtml(station.address)}${
+        here ? `<span class="pop__dist">現在地から ${distanceLabel(station)}</span>` : ""
+      }</p>
       <table class="pop__table">
         <thead><tr><th></th><th>現金</th><th>会員</th><th>更新</th></tr></thead>
         <tbody>${rows}</tbody>
@@ -110,37 +121,88 @@ function popupHtml(station: Station): string {
     </div>`;
 }
 
-function render(): void {
-  const entries = filtered();
-  const sortedPrices = entries.map((e) => e.price);
+/** 同時に描くマーカーの上限。DOM が増えるとドラッグが重くなるため画面内の安い順に絞る */
+const MAX_MARKERS = 250;
 
+let entries: Entry[] = [];
+let prices: number[] = [];
+/** マーカーの見た目を表す署名。変わらなければ作り直さない */
+const signatures = new Map<string, string>();
+
+function makeMarker(entry: Entry, step: number, isBest: boolean): L.Marker {
+  const classes = ["pin", `pin--${step}`];
+  if (isBest) classes.push("pin--best");
+  if (entry.type === "member") classes.push("pin--member");
+  const icon = L.divIcon({
+    className: "pin-wrap",
+    html: `<div class="${classes.join(" ")}" style="--pin:${PRICE_COLORS[step]}"><span>${entry.price}</span></div>`,
+    iconSize: [46, 30],
+    iconAnchor: [23, 30],
+    popupAnchor: [0, -28],
+  });
+  return L.marker([entry.station.lat, entry.station.lon], {
+    icon,
+    title: `${entry.station.name} ${entry.price}`,
+  }).bindPopup(() => popupHtml(entry.station), { maxWidth: 320, minWidth: 260 });
+}
+
+/** 画面内のマーカーだけを差分更新する */
+function renderMarkers(): void {
+  const bounds = map.getBounds().pad(0.2);
+  const wanted = new Map<string, { entry: Entry; step: number; best: boolean; sig: string }>();
+
+  for (const entry of entries) {
+    if (!bounds.contains([entry.station.lat, entry.station.lon])) continue;
+    const step = priceStep(entry.price, prices);
+    const best = wanted.size === 0; // entries は安い順なので画面内の先頭が最安
+    wanted.set(entry.station.id, {
+      entry,
+      step,
+      best,
+      sig: `${entry.price}|${step}|${entry.type}|${best}`,
+    });
+    if (wanted.size >= MAX_MARKERS) break;
+  }
+
+  for (const [id, marker] of markers) {
+    if (!wanted.has(id)) {
+      markerLayer.removeLayer(marker);
+      markers.delete(id);
+      signatures.delete(id);
+    }
+  }
+
+  for (const [id, w] of wanted) {
+    if (signatures.get(id) === w.sig) continue;
+    const old = markers.get(id);
+    if (old) markerLayer.removeLayer(old);
+    const marker = makeMarker(w.entry, w.step, w.best);
+    markerLayer.addLayer(marker);
+    markers.set(id, marker);
+    signatures.set(id, w.sig);
+  }
+
+  const shown = wanted.size;
+  $("count").textContent =
+    shown < entries.length ? `${entries.length} 件 (表示 ${shown})` : `${entries.length} 件`;
+}
+
+function render(): void {
+  entries = filtered();
+  prices = entries.map((e) => e.price);
+  // 条件が変わったので全マーカーを作り直す
   markerLayer.clearLayers();
   markers.clear();
+  signatures.clear();
 
-  entries.forEach((entry, index) => {
-    const step = priceStep(entry.price, sortedPrices);
-    const classes = ["pin", `pin--${step}`];
-    if (index === 0) classes.push("pin--best");
-    if (entry.type === "member") classes.push("pin--member");
-    const icon = L.divIcon({
-      className: "pin-wrap",
-      html: `<div class="${classes.join(" ")}" style="--pin:${PRICE_COLORS[step]}"><span>${entry.price}</span></div>`,
-      iconSize: [46, 30],
-      iconAnchor: [23, 30],
-      popupAnchor: [0, -28],
-    });
-    const marker = L.marker([entry.station.lat, entry.station.lon], {
-      icon,
-      title: `${entry.station.name} ${entry.price}`,
-      riseOnHover: true,
-    }).bindPopup(() => popupHtml(entry.station), { maxWidth: 320, minWidth: 260 });
-    marker.addTo(markerLayer);
-    markers.set(entry.station.id, marker);
-  });
+  renderMarkers();
+  renderList(entries, prices);
+  renderLegend(prices);
+}
 
-  renderList(entries, sortedPrices);
-  renderLegend(sortedPrices);
-  $("count").textContent = `${entries.length} 件`;
+/** 現在地が動いたときはマーカーを作り直さず一覧の距離だけ更新する */
+function refreshList(): void {
+  renderList(entries, prices);
 }
 
 function renderList(entries: Entry[], sortedPrices: number[]): void {
@@ -155,7 +217,7 @@ function renderList(entries: Entry[], sortedPrices: number[]): void {
         <span class="list__price" style="--pin:${PRICE_COLORS[priceStep(e.price, sortedPrices)]}">${e.price}</span>
         <span class="list__body">
           <span class="list__name">${escapeHtml(e.station.name)}</span>
-          <span class="list__meta">${escapeHtml(prefName(e.station.pref))}・${e.type === "member" ? "会員" : "現金"}・${formatUpdated(e.info.updated)}</span>
+          <span class="list__meta">${here ? `<span class="list__dist">${distanceLabel(e.station)}</span>` : ""}${escapeHtml(prefName(e.station.pref))}・${e.type === "member" ? "会員" : "現金"}・${formatUpdated(e.info.updated)}</span>
         </span>
       </li>`,
     )
@@ -182,10 +244,11 @@ function renderLegend(sorted: number[]): void {
 
 function focusStation(id: string): void {
   const station = data.stations.find((s) => s.id === id);
-  const marker = markers.get(id);
-  if (!station || !marker) return;
-  map.setView([station.lat, station.lon], Math.max(map.getZoom(), 16), { animate: true });
-  marker.openPopup();
+  if (!station) return;
+  // 画面外のマーカーは描かれていないので、移動を即座に確定させてから描き直す
+  map.setView([station.lat, station.lon], Math.max(map.getZoom(), 16), { animate: false });
+  renderMarkers();
+  markers.get(id)?.openPopup();
 }
 
 function fitToSelection(): void {
@@ -331,15 +394,39 @@ function wireEvents(): void {
     if (item?.dataset.id) focusStation(item.dataset.id);
   });
 
+  // 表示範囲が変わったらマーカーを貼り直す (ドラッグ中は走らせない)
+  map.on("moveend zoomend", () => renderMarkers());
+  // ドラッグ中はパネルのぼかしを止める。合成のコストが大きく描画が詰まるため
+  map.on("movestart zoomstart", () => document.body.classList.add("map-moving"));
+  map.on("moveend zoomend", () => document.body.classList.remove("map-moving"));
+
   const setPanel = (hidden: boolean) => document.body.classList.toggle("panel-hidden", hidden);
   $("panel-close").addEventListener("click", () => setPanel(true));
   $("panel-toggle").addEventListener("click", () => setPanel(false));
 }
 
-function toast(message: string): void {
+let toastTimer: ReturnType<typeof setTimeout>;
+
+function toast(message: string, autoHide = true): void {
   const el = $("toast");
   el.textContent = message;
   el.hidden = false;
+  clearTimeout(toastTimer);
+  if (autoHide) toastTimer = setTimeout(() => (el.hidden = true), 5000);
+}
+
+function watchLocation(): void {
+  let last: L.LatLng | null = null;
+  setupLocate(map, {
+    onChange: (latlng) => {
+      here = latlng;
+      // 20m 以上動いたときだけ描き直す (watch は頻繁に発火する)
+      if (latlng && last && latlng.distanceTo(last) < 20) return;
+      last = latlng;
+      refreshList();
+    },
+    onError: (message) => toast(message),
+  });
 }
 
 async function boot(): Promise<void> {
@@ -348,7 +435,7 @@ async function boot(): Promise<void> {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     data = (await res.json()) as Dataset;
   } catch (e) {
-    toast(`価格データを読み込めませんでした (${(e as Error).message})`);
+    toast(`価格データを読み込めませんでした (${(e as Error).message})`, false);
     return;
   }
   state = readState();
@@ -356,6 +443,7 @@ async function boot(): Promise<void> {
   setSegmented($("fuel"), state.fuel);
   setSegmented($("price-type"), state.priceType);
   wireEvents();
+  watchLocation();
   render();
   if (state.pref) fitToSelection();
 }
