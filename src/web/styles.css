@@ -1,0 +1,593 @@
+/* Leaflet の既定スタイルを先に読み込み、以降の指定で上書きする */
+@import "leaflet/dist/leaflet.css";
+
+:root {
+  --bg: #0f1418;
+  --panel: rgba(17, 23, 28, 0.92);
+  --panel-solid: #11171c;
+  --line: rgba(255, 255, 255, 0.12);
+  --text: #eef2f5;
+  --muted: #9aa7b1;
+  --accent: #38bdf8;
+  --radius: 10px;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", sans-serif;
+  font-size: 14px;
+  overscroll-behavior: none;
+}
+
+#map {
+  position: absolute;
+  inset: 0;
+  background: #0b1013;
+}
+
+/* ---------- パネル ---------- */
+
+.panel {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 1000;
+  width: 340px;
+  max-height: calc(100dvh - 24px);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  transition: transform 0.22s ease, opacity 0.22s ease;
+}
+
+body.panel-hidden .panel {
+  transform: translateX(calc(-100% - 16px));
+  opacity: 0;
+  pointer-events: none;
+}
+
+.panel__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.panel__close {
+  margin-left: auto;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.panel__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.panel__meta {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 16px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.panel__footer {
+  padding: 8px 16px 10px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.panel__footer a,
+.link-btn {
+  color: var(--accent);
+}
+
+.panel-toggle {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+body.panel-hidden .panel-toggle {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ---------- フォーム部品 ---------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field--row {
+  flex-direction: row;
+  gap: 10px;
+}
+
+.field--grow {
+  min-height: 0;
+}
+
+.field__label {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.field__inline {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+select,
+input[type="search"] {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+select:focus-visible,
+input:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.link-btn {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.segmented {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.segmented button {
+  flex: 1;
+  padding: 6px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.segmented button[aria-checked="true"] {
+  background: var(--accent);
+  color: #06222e;
+  font-weight: 700;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.chip {
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.chip[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: rgba(56, 189, 248, 0.18);
+  color: var(--text);
+}
+
+.count {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+/* ---------- 凡例 ---------- */
+
+.legend__bar {
+  display: flex;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.legend__bar span {
+  flex: 1;
+}
+
+.legend__scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ---------- 一覧 ---------- */
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.list__item {
+  display: grid;
+  grid-template-columns: 18px 44px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.list__item:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.list__rank {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+}
+
+.list__price {
+  padding: 3px 0;
+  border-radius: 6px;
+  background: var(--pin);
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  text-align: center;
+}
+
+.list__body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.list__name {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.list__meta {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.list__empty {
+  padding: 12px 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ---------- マーカー ---------- */
+
+.pin-wrap {
+  background: none;
+  border: 0;
+}
+
+.pin {
+  position: relative;
+  width: 46px;
+  height: 24px;
+  display: grid;
+  place-content: center;
+  border-radius: 6px;
+  border: 1.5px solid rgba(255, 255, 255, 0.9);
+  background: var(--pin);
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+}
+
+.pin::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  translate: -50% 0;
+  border: 5px solid transparent;
+  border-top-color: rgba(255, 255, 255, 0.9);
+}
+
+.pin--member::before {
+  content: "会";
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 15px;
+  height: 15px;
+  display: grid;
+  place-content: center;
+  border-radius: 50%;
+  background: #e11d48;
+  color: #fff;
+  font-size: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+}
+
+.pin--best {
+  border-color: #fde047;
+  box-shadow: 0 0 0 3px rgba(253, 224, 71, 0.45), 0 2px 8px rgba(0, 0, 0, 0.6);
+  z-index: 1;
+}
+
+/* ---------- ポップアップ ---------- */
+
+.leaflet-popup-content-wrapper {
+  background: var(--panel-solid);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.leaflet-popup-tip {
+  background: var(--panel-solid);
+}
+
+.leaflet-popup-content {
+  margin: 12px 14px;
+}
+
+.leaflet-container a.leaflet-popup-close-button {
+  color: var(--muted);
+}
+
+.pop__name {
+  margin: 0 0 4px;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.pop__sub {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.pop__brand {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
+.pop__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.pop__table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 3px 6px 3px 0;
+}
+
+.pop__table td {
+  padding: 3px 6px 3px 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.pop__price {
+  font-weight: 700;
+}
+
+.pop__price small {
+  margin-left: 1px;
+  font-weight: 400;
+  font-size: 9px;
+  color: var(--muted);
+}
+
+.pop__price--member {
+  color: #fda4af;
+}
+
+.pop__na {
+  color: var(--muted);
+}
+
+.pop__date {
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.pop__memo {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.pop__tag {
+  display: inline-block;
+  margin-right: 5px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.pop__links {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.pop__links a {
+  color: var(--accent);
+}
+
+/* ---------- Leaflet の暗色化 ---------- */
+
+.leaflet-bar a,
+.leaflet-control-layers {
+  background: var(--panel-solid);
+  color: var(--text);
+  border-color: var(--line);
+}
+
+.leaflet-bar a:hover {
+  background: #1b242b;
+  color: var(--text);
+}
+
+.leaflet-control-layers-expanded {
+  padding: 8px 12px 8px 8px;
+  font-size: 12px;
+}
+
+.leaflet-control-attribution {
+  background: rgba(15, 20, 24, 0.75) !important;
+  color: var(--muted) !important;
+  font-size: 10px;
+}
+
+.leaflet-control-attribution a {
+  color: var(--accent) !important;
+}
+
+.leaflet-control-scale-line {
+  background: rgba(15, 20, 24, 0.6);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+/* ---------- トースト ---------- */
+
+.toast {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  translate: -50% 0;
+  z-index: 1200;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel-solid);
+  font-size: 12px;
+}
+
+/* ---------- モバイル ---------- */
+
+@media (max-width: 640px) {
+  .panel {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-height: 62dvh;
+    border-radius: 14px 14px 0 0;
+  }
+
+  body.panel-hidden .panel {
+    transform: translateY(100%);
+  }
+
+  .panel-toggle {
+    top: auto;
+    bottom: 16px;
+    left: 50%;
+    translate: -50% 0;
+  }
+}

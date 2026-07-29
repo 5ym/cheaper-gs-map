@@ -1,0 +1,56 @@
+name: Build and deploy
+
+on:
+  push:
+    branches: [master]
+  schedule:
+    # 1 日 1 回 21:00 UTC = 翌 6:00 JST
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# デプロイの重複を避ける (実行中のものは終わらせる)
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: 価格データを収集
+        run: bun run scrape
+        env:
+          TOP_N: "10"
+          FETCH_DELAY_MS: "800"
+
+      - name: サイトをビルド
+        run: bun run build:web
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

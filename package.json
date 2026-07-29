@@ -1,0 +1,23 @@
+{
+  "name": "cheaper-gs-map",
+  "version": "1.0.0",
+  "description": "gogo.gs の全国ガソリン価格ランキングを収集して衛星写真マップに表示する静的サイト",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "scrape": "bun run src/scraper/index.ts",
+    "build:web": "bun run scripts/build-web.ts",
+    "build": "bun run scrape && bun run build:web",
+    "dev": "bun run scripts/build-web.ts --serve",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.14",
+    "@types/leaflet": "^1.9.12",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "leaflet": "^1.9.4"
+  }
+}
