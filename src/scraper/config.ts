@@ -2,9 +2,6 @@ import type { FuelKey, PriceTypeKey } from "../shared/types.ts";
 
 export const ORIGIN = "https://gogo.gs";
 
-/** 各都道府県で何位まで取るか */
-export const TOP_N = Number(process.env.TOP_N ?? 10);
-
 /**
  * 価格の対象期間 (gogo.gs の span パラメータ)
  * 1=1ヶ月以内 / 2=14日以内 / 3=7日以内 / 4=4日以内 / 5=1日以内
@@ -26,16 +23,16 @@ export const FUELS: { key: FuelKey; mode: number; label: string; unit: string }[
   { key: "kerosene", mode: 3, label: "灯油", unit: "円/18L" },
 ];
 
-/** ランキングは会員価格と現金価格の両方を含めて取得し、行のバッジで判別する */
-export const PRICE_TYPES: { key: PriceTypeKey; label: string }[] = [
-  { key: "normal", label: "現金" },
-  { key: "member", label: "会員" },
+/** gogo.gs の member_types に対応する価格の種類。現金と会員は別々に取得する */
+export const PRICE_TYPES: { key: PriceTypeKey; member: number; label: string }[] = [
+  { key: "normal", member: 0, label: "現金" },
+  { key: "member", member: 1, label: "会員" },
 ];
 
 /**
- * 系列アイコン maker_{n}_48x48.png の n → 系列名。
- * 3〜99 は gogo.gs のスタンド検索が公開している系列区分と同じ。
- * 独自ブランドのロゴは ext_maker_{n} という別系統の番号なので、99 に寄せている。
+ * ピン画像 pin_{n}_64x64.png の n → 系列名。
+ * gogo.gs のスタンド検索が公開している系列区分と同じ 9 種類。
+ * 独自ブランドは ext_pin_{n} という別系統の番号なので、99 に寄せている。
  */
 export const BRANDS: Record<number, string> = {
   3: "ENEOS",

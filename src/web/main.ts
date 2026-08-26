@@ -8,17 +8,14 @@ import {
   escapeHtml,
   formatDistance,
   formatStamp,
-  formatUpdated,
   priceStep,
-  relativeDays,
 } from "./format.ts";
-import type { Dataset, FuelKey, PriceInfo, PriceTypeKey, Station } from "../shared/types.ts";
+import type { Dataset, FuelKey, PriceTypeKey, Station } from "../shared/types.ts";
 
 type PriceTypeFilter = "best" | PriceTypeKey;
 
 interface Entry {
   station: Station;
-  info: PriceInfo;
   type: PriceTypeKey;
   price: number;
 }
@@ -27,7 +24,8 @@ interface State {
   fuel: FuelKey;
   priceType: PriceTypeFilter;
   pref: number;
-  freshness: number;
+  /** 現在地からの距離 (km)。0 は指定なし */
+  radius: number;
   search: string;
   brands: Set<number>;
 }
@@ -47,6 +45,8 @@ const { map, geolocate, ready } = createMap($("map"));
 // スモークテストから実際の描画結果 (queryRenderedFeatures) を確認するために公開する
 (window as unknown as { __map: typeof map }).__map = map;
 
+const prefName = (code: number) => data.prefectures.find((p) => p.code === code)?.name ?? "";
+
 /** 現在地からの距離表記。現在地が無ければ空文字 */
 function distanceLabel(station: Station): string {
   if (!here) return "";
@@ -57,32 +57,33 @@ function distanceLabel(station: Station): string {
 function pickPrice(station: Station, fuel: FuelKey, type: PriceTypeFilter): Entry | null {
   const slot = station.prices[fuel];
   if (!slot) return null;
-  const candidates: [PriceTypeKey, PriceInfo][] =
+  const candidates: [PriceTypeKey, number][] =
     type === "best"
-      ? (Object.entries(slot) as [PriceTypeKey, PriceInfo][])
-      : slot[type]
+      ? (Object.entries(slot) as [PriceTypeKey, number][])
+      : slot[type] !== undefined
         ? [[type, slot[type]!]]
         : [];
   let best: Entry | null = null;
-  for (const [key, info] of candidates) {
-    if (!best || info.price < best.price) best = { station, info, type: key, price: info.price };
+  for (const [key, price] of candidates) {
+    if (!best || price < best.price) best = { station, type: key, price };
   }
   return best;
 }
 
 function filtered(): Entry[] {
   const q = state.search.trim().toLowerCase();
+  const near = state.radius > 0 && here ? { center: here, km: state.radius } : null;
   const result: Entry[] = [];
   for (const station of data.stations) {
     if (state.pref && station.pref !== state.pref) continue;
     if (state.brands.size && !state.brands.has(station.brand)) continue;
-    if (q && !`${station.name} ${station.address}`.toLowerCase().includes(q)) continue;
+    if (q && !station.name.toLowerCase().includes(q)) continue;
+    if (near && distanceKm(near.center, station) > near.km) continue;
     const entry = pickPrice(station, state.fuel, state.priceType);
     if (!entry) continue;
-    if (state.freshness && relativeDays(entry.info.updated) > state.freshness) continue;
     result.push(entry);
   }
-  return result.sort((a, b) => a.price - b.price || a.info.rank - b.info.rank);
+  return result.sort((a, b) => a.price - b.price || a.station.id.localeCompare(b.station.id));
 }
 
 function popupHtml(station: Station): string {
@@ -93,33 +94,26 @@ function popupHtml(station: Station): string {
       if (!slot) return "";
       const cells = (["normal", "member"] as const)
         .map((t) => {
-          const info = slot[t];
-          if (!info) return `<td class="pop__na">-</td>`;
+          const price = slot[t];
+          if (price === undefined) return `<td class="pop__na">-</td>`;
           const cls = t === "member" ? "pop__price pop__price--member" : "pop__price";
-          return `<td class="${cls}">${info.price}<small>${fuel.unit.replace("円", "")}</small></td>`;
+          return `<td class="${cls}">${price}<small>${fuel.unit.replace("円", "")}</small></td>`;
         })
         .join("");
-      const info = slot.member ?? slot.normal!;
-      return `<tr><th>${escapeHtml(fuel.label)}</th>${cells}<td class="pop__date">${formatUpdated(info.updated)}</td></tr>`;
+      return `<tr><th>${escapeHtml(fuel.label)}</th>${cells}</tr>`;
     })
     .join("");
-
-  const note = data.fuels
-    .map((f) => station.prices[f.key])
-    .flatMap((slot) => (slot ? [slot.member, slot.normal] : []))
-    .find((i) => i?.memo);
 
   return `
     <div class="pop">
       <h3 class="pop__name">${escapeHtml(station.name)}</h3>
-      <p class="pop__sub"><span class="pop__brand">${escapeHtml(brand)}</span>${escapeHtml(station.address)}${
+      <p class="pop__sub"><span class="pop__brand">${escapeHtml(brand)}</span>${escapeHtml(prefName(station.pref))}${
         here ? `<span class="pop__dist">現在地から ${distanceLabel(station)}</span>` : ""
       }</p>
       <table class="pop__table">
-        <thead><tr><th></th><th>現金</th><th>会員</th><th>更新</th></tr></thead>
+        <thead><tr><th></th><th>現金</th><th>会員</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
-      ${note?.memo ? `<p class="pop__memo">${note.tag ? `<span class="pop__tag">${escapeHtml(note.tag)}</span>` : ""}${escapeHtml(note.memo)}</p>` : ""}
       <div class="pop__links">
         <a href="https://gogo.gs/shop/${encodeURIComponent(station.id)}" target="_blank" rel="noopener">gogo.gs で見る</a>
         <a href="https://www.google.com/maps/dir/?api=1&destination=${station.lat},${station.lon}" target="_blank" rel="noopener">経路</a>
@@ -174,7 +168,6 @@ function render(): void {
 
 function renderList(): void {
   const list = $<HTMLOListElement>("list");
-  const prefName = (code: number) => data.prefectures.find((p) => p.code === code)?.name ?? "";
   if (entries.length === 0) {
     list.innerHTML = `<li class="list__empty">条件に合うスタンドがありません</li>`;
     return;
@@ -188,7 +181,7 @@ function renderList(): void {
         <span class="list__price" style="--pin:${PRICE_COLORS[priceStep(e.price, prices)]}">${e.price}</span>
         <span class="list__body">
           <span class="list__name">${escapeHtml(e.station.name)}</span>
-          <span class="list__meta">${here ? `<span class="list__dist">${distanceLabel(e.station)}</span>` : ""}${escapeHtml(prefName(e.station.pref))}・${e.type === "member" ? "会員" : "現金"}・${formatUpdated(e.info.updated)}</span>
+          <span class="list__meta">${here ? `<span class="list__dist">${distanceLabel(e.station)}</span>` : ""}${escapeHtml(prefName(e.station.pref))}・${e.type === "member" ? "会員" : "現金"}</span>
         </span>
       </li>`,
     )
@@ -234,7 +227,7 @@ function readState(): State {
       ? p.get("type")
       : "best") as PriceTypeFilter,
     pref: Number(p.get("pref") ?? 0) || 0,
-    freshness: Number(p.get("fresh") ?? 0) || 0,
+    radius: Number(p.get("r") ?? 0) || 0,
     search: p.get("q") ?? "",
     brands: new Set(brands ? brands.split(",").map(Number).filter(Boolean) : []),
   };
@@ -245,7 +238,7 @@ function writeState(): void {
   if (state.fuel !== "regular") p.set("fuel", state.fuel);
   if (state.priceType !== "best") p.set("type", state.priceType);
   if (state.pref) p.set("pref", String(state.pref));
-  if (state.freshness) p.set("fresh", String(state.freshness));
+  if (state.radius) p.set("r", String(state.radius));
   if (state.search) p.set("q", state.search);
   if (state.brands.size) p.set("brands", [...state.brands].join(","));
   const hash = p.toString();
@@ -282,11 +275,11 @@ function buildControls(): void {
     )
     .join("");
 
-  $<HTMLSelectElement>("freshness").value = String(state.freshness);
+  $<HTMLSelectElement>("radius").value = String(state.radius);
   $<HTMLInputElement>("search").value = state.search;
-  $("topn").textContent = String(data.topN);
+  $("span-label").textContent = data.span;
   $("meta").innerHTML =
-    `${data.stations.length} 店舗・${escapeHtml(data.span)}の価格<br>更新 ${formatStamp(data.generatedAt)}`;
+    `${data.stations.length.toLocaleString()} 店舗・${escapeHtml(data.span)}の価格<br>更新 ${formatStamp(data.generatedAt)}`;
 }
 
 function setSegmented(box: HTMLElement, value: string): void {
@@ -318,9 +311,13 @@ function wireEvents(): void {
     fitToSelection();
   });
 
-  $<HTMLSelectElement>("freshness").addEventListener("change", (e) => {
-    state.freshness = Number((e.target as HTMLSelectElement).value);
+  $<HTMLSelectElement>("radius").addEventListener("change", (e) => {
+    state.radius = Number((e.target as HTMLSelectElement).value);
+    if (state.radius > 0 && !here) {
+      toast("現在地が取れていないので、右下の現在地ボタンを押してください");
+    }
     update();
+    if (state.radius > 0) fitToSelection();
   });
 
   let searchTimer: ReturnType<typeof setTimeout>;
@@ -376,13 +373,35 @@ function wireEvents(): void {
   geolocate.on("geolocate", (e) => {
     const { latitude, longitude } = e.coords;
     here = { lat: latitude, lon: longitude };
-    // 20m 以上動いたときだけ一覧を描き直す (追従は頻繁に発火する)
-    if (lastFix && distanceKm(lastFix, here) < 0.02) return;
+
+    // 初回だけ、周辺に絞った状態にする
+    if (!lastFix) {
+      lastFix = here;
+      if (autoLocating && state.radius === 0 && !state.pref) {
+        state.radius = DEFAULT_RADIUS_KM;
+        $<HTMLSelectElement>("radius").value = String(DEFAULT_RADIUS_KM);
+      }
+      autoLocating = false;
+      update();
+      return;
+    }
+    // 20m 以上動いたときだけ描き直す (追従は頻繁に発火する)
+    if (distanceKm(lastFix, here) < 0.02) return;
     lastFix = here;
-    renderList();
+    if (state.radius > 0) update();
+    else renderList();
   });
-  geolocate.on("error", () => toast("現在地を取得できませんでした"));
+  geolocate.on("error", () => {
+    // 起動時の自動取得で拒否された場合は黙って全国表示のままにする
+    if (!autoLocating) toast("現在地を取得できませんでした");
+    autoLocating = false;
+  });
 }
+
+/** 現在地が取れたときに既定で絞り込む距離 */
+const DEFAULT_RADIUS_KM = 10;
+/** 起動時の自動測位中かどうか。拒否されてもトーストを出さないための目印 */
+let autoLocating = false;
 
 let toastTimer: ReturnType<typeof setTimeout>;
 
@@ -426,7 +445,13 @@ async function boot(): Promise<void> {
 
   render();
   // ソースは地図の準備ができるまで存在しないので、整い次第もう一度流し込む
-  void ready.then(() => renderPins());
+  void ready.then(() => {
+    renderPins();
+    // 共有リンクで開いた場合は、その条件を尊重して現在地に寄せない
+    if (location.hash.length > 1) return;
+    autoLocating = true;
+    geolocate.trigger();
+  });
   if (state.pref) fitToSelection();
 }
 

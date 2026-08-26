@@ -100,6 +100,8 @@ export function createMap(container: HTMLElement): MapBundle {
     positionOptions: { enableHighAccuracy: true },
     trackUserLocation: true,
     showAccuracyCircle: true,
+    // 既定の 15 は寄りすぎで周辺のスタンドが画面に入らない
+    fitBoundsOptions: { maxZoom: 12 },
   });
 
   map.addControl(new ScaleControl({ unit: "metric" }), "bottom-left");

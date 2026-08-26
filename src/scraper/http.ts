@@ -39,10 +39,6 @@ async function request(url: string, accept: string): Promise<Response> {
   throw lastError;
 }
 
-export function fetchHtml(url: string): Promise<string> {
-  return serialize(async () => (await request(url, "text/html")).text());
-}
-
 export function fetchJson<T>(url: string): Promise<T> {
   return serialize(async () => (await request(url, "application/json")).json() as Promise<T>);
 }

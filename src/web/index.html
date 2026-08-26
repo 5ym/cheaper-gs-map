@@ -50,18 +50,19 @@
             <select id="pref"></select>
           </label>
           <label class="field__inline">
-            <span class="field__label">更新</span>
-            <select id="freshness">
-              <option value="0">すべて</option>
-              <option value="1">24時間以内</option>
-              <option value="3">3日以内</option>
-              <option value="7">7日以内</option>
+            <span class="field__label">現在地から</span>
+            <select id="radius">
+              <option value="0">指定なし</option>
+              <option value="5">5km以内</option>
+              <option value="10">10km以内</option>
+              <option value="20">20km以内</option>
+              <option value="50">50km以内</option>
             </select>
           </label>
         </section>
 
         <section class="field">
-          <label class="field__label" for="search">店名・住所で検索</label>
+          <label class="field__label" for="search">店名で検索</label>
           <input id="search" type="search" placeholder="例: セルフ 八王子" autocomplete="off" />
         </section>
 
@@ -86,10 +87,8 @@
 
       <footer class="panel__footer">
         価格データ:
-        <a href="https://gogo.gs/" target="_blank" rel="noopener">gogo.gs</a> ／ 各都道府県の上位<span
-          id="topn"
-          >-</span
-        >位
+        <a href="https://gogo.gs/" target="_blank" rel="noopener">gogo.gs</a> ／
+        <span id="span-label">-</span>に価格が投稿された全国のスタンド
       </footer>
     </aside>
 
