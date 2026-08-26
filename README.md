@@ -50,16 +50,14 @@ bun run typecheck   # tsc + 地図スタイルを MapLibre の検証器にかけ
 bun run smoke       # dist/ を実際のブラウザで開いて描画を確認する
 ```
 
-`smoke` は初回だけブラウザの取得が要る。
-
-```bash
-bunx playwright install chromium
-```
+`smoke` は Bun 1.4 の `Bun.WebView` でヘッドレスブラウザを動かす。
+Linux では CDP 経由で、入っている Chrome / Chromium / Edge / Brave を借りる
+(見つからないときは `BUN_CHROME_PATH` で指定する)。追加の依存は要らない。
 
 地図は WebGL とワーカーで動くので、型検査やスタイル検証では
 「ラスタタイルは出るのにピンだけ出ない」類の壊れ方を検出できない。
 実際に `maplibre-gl-worker.mjs` の配置漏れでそうなったことがあるため、
-描画されたスタンドの数まで確認するスモークテストを CI に入れてある。
+`queryRenderedFeatures` で実際に描画されたスタンドの数まで確認している。
 
 ### 環境変数
 
