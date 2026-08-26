@@ -1,11 +1,15 @@
 name: Build and deploy
 
+# 公開を一時停止している。gogo.gs から再配布の許諾が得られるまで自動デプロイしない。
+# 再開するときは push と schedule のトリガを戻し、Settings > Pages で
+# Source を GitHub Actions に設定し直す。
+#
+#  push:
+#    branches: [master]
+#  schedule:
+#    # 1 日 1 回 21:00 UTC = 翌 6:00 JST
+#    - cron: "0 21 * * *"
 on:
-  push:
-    branches: [master]
-  schedule:
-    # 1 日 1 回 21:00 UTC = 翌 6:00 JST
-    - cron: "0 21 * * *"
   workflow_dispatch:
 
 permissions:

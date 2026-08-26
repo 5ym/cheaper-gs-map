@@ -87,7 +87,23 @@ DOM 要素を動かす Leaflet と違ってドラッグがメインスレッド�
 - 絞り込み条件は URL のハッシュに入るので、そのまま共有できる
 - WebGL2 が使えない環境では白紙にせず理由を表示する
 
-## GitHub Pages への公開
+## 公開について
+
+**現在、公開は停止している。** GitHub Pages を無効化し、自動デプロイも止めてある。
+
+gogo.gs の [robots.txt](https://gogo.gs/robots.txt) は `/api/` を全クローラに対して
+Disallow としており、本ツールが使う `/api/shop/around` はその配下にある。
+また [利用規約](https://gogo.gs/info/terms) 第4条は「本サービスを通じて入手した
+コンテンツを、事務局の承認なく、複製、販売、出版その他私的利用の範囲を超えて
+使用する行為」を禁じている。収集したデータを公開サイトとして再配布することは
+これに触れる可能性が高い。
+
+そのため gogo.gs に利用許諾を問い合わせ中で、返答があるまでは手元 (`bun run dev`)
+でのみ使う。許諾が得られた場合は
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) のトリガを戻し、
+クレジット表記 (「ガソリン価格比較サイト gogo.gs」) を付けた上で再開する。
+
+## GitHub Pages への公開 (許諾が得られた場合)
 
 1. リポジトリの **Settings → Pages → Source** を **GitHub Actions** にする
 2. `master` への push、または 1 日 1 回（6:00 JST）の cron で
