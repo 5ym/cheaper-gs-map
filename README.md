@@ -12,7 +12,7 @@
 src/scraper/   価格収集 (Bun で実行)
   config.ts      都道府県・油種・ブランドの定義
   http.ts        直列化 + リトライ付き fetch
-  ranking.ts     ランキングページのパーサ
+  ranking.ts     ランキングページのパーサ (Bun 内蔵の HTMLRewriter)
   coords.ts      店舗座標の解決
   index.ts       収集の全体制御 → data/stations.json
 src/web/       地図フロントエンド (MapLibre GL)
@@ -38,6 +38,10 @@ gogo.gs のマップ画面が使っている `/api/shop/around` を都道府県�
 会員価格の行は赤いバッジで判別し、現金価格と両方を保持する。
 
 ## 使い方
+
+依存は `maplibre-gl` (バンドルして dist に入る) と型定義だけで、すべて
+devDependencies にある。実行時に node_modules を読むのは収集とビルドだけなので、
+`--production` を付けて入れるとビルドできない点に注意。
 
 ```bash
 bun install
