@@ -1,11 +1,5 @@
 # cheaper-gs-map
 
-[gogo.gs](https://gogo.gs/) の全国ガソリン価格ランキングから **各都道府県の上位10位** を収集し、
-衛星写真の地図上に表示する静的サイト。GitHub Actions で定期実行し、GitHub Pages に配信する。
-
-旧 `cu.php`（CSV 出力）を TypeScript + Bun に置き換えたもの。gogo.gs は Livewire ベースに刷新され、
-旧 HTML クラス（`shop-name` / `price` など）は存在しないため、パーサは新しい DOM 構造に合わせてある。
-
 ## 構成
 
 ```text
