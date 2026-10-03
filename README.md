@@ -100,7 +100,7 @@ Disallow としており、本ツールが使う `/api/shop/around` はその配
 ## GitHub Pages への公開 (許諾が得られた場合)
 
 1. リポジトリの **Settings → Pages → Source** を **GitHub Actions** にする
-2. `master` への push、または 1 日 1 回（6:00 JST）の cron で
+2. `m` への push、または 1 日 1 回（6:00 JST）の cron で
    [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) が収集・ビルド・デプロイを行う
 3. 公開先: `https://<ユーザー名>.github.io/cheaper-gs-map/`
 
