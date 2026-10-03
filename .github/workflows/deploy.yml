@@ -5,7 +5,7 @@ name: Build and deploy
 # Source を GitHub Actions に設定し直す。
 #
 #  push:
-#    branches: [master]
+#    branches: [m]
 #  schedule:
 #    # 1 日 1 回 21:00 UTC = 翌 6:00 JST
 #    - cron: "0 21 * * *"
